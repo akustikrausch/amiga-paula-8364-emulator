@@ -1,15 +1,15 @@
-```
-/===================================================================\
-   _   _  ___   _ ___ _____ ___ _  _____    _  _   _ ___  ___ _  _
-  /_\ | |/ / | | / __|_   _|_ _| |/ / _ \  /_\| | | / __|/ __| || |
- / _ \| ' <| |_| \__ \ | |  | || ' <|   / / _ \ |_| \__ \ (__| __ |
-/_/ \_\_|\_\\___/|___/ |_| |___|_|\_\_|_\/_/ \_\___/|___/\___|_||_|
-\===================================================================/
-```
-
-**Akustikrausch (Andreas Wendorf)**
-
 # amiga paula 8364 emulator
+
+**by Akustikrausch (Andreas Wendorf)**
+
+<p>
+  <img src="https://img.shields.io/badge/license-MIT-3da639" alt="license MIT">
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599c" alt="C++17">
+  <img src="https://img.shields.io/badge/deps-none-brightgreen" alt="no deps">
+  <img src="https://img.shields.io/badge/just-1%20header%20%2B%201%20source-blueviolet" alt="1 header + 1 source">
+  <img src="https://img.shields.io/badge/chip-Amiga%20Paula%208364-ff5e00" alt="Amiga Paula 8364">
+  <a href="https://github.com/akustikrausch/FXChainPlayer-Releases"><img src="https://img.shields.io/badge/proven%20in-FXChainPlayer-6c7bff" alt="proven in FXChainPlayer"></a>
+</p>
 
 a tiny, clean-room emulator of **paula** — the 4-channel sample-dma sound chip
 in every commodore amiga (ocs/ecs/aga). pure c++, no dependencies, one header
