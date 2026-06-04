@@ -1,0 +1,11 @@
+# build junk
+*.o
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.wav
+paulatest
+build/
+.vs/
+.cache/
