@@ -141,6 +141,17 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
     }
 }
 
+void Paula::setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept {
+    if (ch < 0 || ch >= kPaulaChannels) return;
+    // overwrite ONLY the latched (reload-at-block-end) pair. the live playhead
+    // (curPtr / curWordsLeft) is left alone, so the one-shot just programmed
+    // finishes and the channel then loops this region -- the amiga audxlc+audxlen
+    // reload mechanism (advanceOneSourceSample_'s curWordsLeft==0 branch copies
+    // locPtrLatched/lenWordsLatched into the live registers).
+    channels_[ch].locPtrLatched   = loc;
+    channels_[ch].lenWordsLatched = lenWords;
+}
+
 uint16_t Paula::readRegister16(uint32_t addr) const noexcept {
     const uint32_t reg = addr & 0xFFFu;
     if (reg == kReg_DMACONR) return dmaCon_;
@@ -229,12 +240,28 @@ void Paula::serviceChannel_(Channel& c, int chIdx,
         advanceOneSourceSample_(c, chIdx);
     }
 
-    // linear interp between the current and next source sample.
-    const float a = sampleToFloat(c.curOut);
-    const float b = sampleToFloat(c.nextOut);
-    const float interp = a + float(c.phase) * (b - a);
+    // resample. nearest = zero-order hold (bright, the amiga default); linear =
+    // one-tap interp between the current and next source sample (softer).
+    float interp;
+    if (interp_ == Interp::Linear) {
+        const float a = sampleToFloat(c.curOut);
+        const float b = sampleToFloat(c.nextOut);
+        interp = a + float(c.phase) * (b - a);
+    } else {
+        interp = sampleToFloat(c.curOut);
+    }
 
-    mixOut += interp * volumeToGain(c.volume);
+    // anti-click: glide the channel gain toward its target over ~2 ms instead
+    // of stepping. paula volume writes are otherwise instantaneous, so every
+    // note-on / envelope step / setvolume produced a zipper click.
+    const float targetGain = volumeToGain(c.volume);
+    c.gainSmoothed += (targetGain - c.gainSmoothed) * gainSmoothCoeff_;
+
+    // a muted channel ran its full dma + gain state above; only its mix
+    // contribution is dropped, so unmuting is glitch-free.
+    if (!channelMuted_[chIdx]) {
+        mixOut += interp * c.gainSmoothed;
+    }
 }
 
 void Paula::render(float* outL, float* outR, int frames, double outSr) noexcept {
@@ -242,16 +269,21 @@ void Paula::render(float* outL, float* outR, int frames, double outSr) noexcept 
         return;
     }
     const double secondsPerOutFrame = 1.0 / outSr;
+    // anti-click 1-pole coefficient for a ~2 ms gain glide at this rate.
+    gainSmoothCoeff_ = 1.0f - std::exp(-1.0f / (0.002f * float(outSr)));
+
+    // stereo-separation cross-blend: a hard-panned LRRL voice bleeds (1-sep)/2
+    // into the opposite side. sep=1.0 -> exact hard-pan; sep<1 -> natural image.
+    const float toOpp  = (1.0f - stereoSep_) * 0.5f;
+    const float toSame = 1.0f - toOpp;
 
     for (int f = 0; f < frames; ++f) {
         float l = 0.0f, r = 0.0f;
         for (int ch = 0; ch < kPaulaChannels; ++ch) {
-            const int side = channelStereoSide(ch);
-            if (side < 0) {
-                serviceChannel_(channels_[ch], ch, secondsPerOutFrame, l);
-            } else {
-                serviceChannel_(channels_[ch], ch, secondsPerOutFrame, r);
-            }
+            float mono = 0.0f;
+            serviceChannel_(channels_[ch], ch, secondsPerOutFrame, mono);
+            if (channelStereoSide(ch) < 0) { l += mono * toSame; r += mono * toOpp; }
+            else                           { r += mono * toSame; l += mono * toOpp; }
         }
         outL[f] = l;
         outR[f] = r;

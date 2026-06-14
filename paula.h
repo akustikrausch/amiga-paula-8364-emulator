@@ -18,13 +18,24 @@
 //   * instant period writes (audxper)
 //   * audxlen reload at end-of-sample -> loop, the way trackers that don't
 //     toggle dma per row expect
-//   * volume 0..64 -> linear gain
+//   * a two-stage loop program: setLoop() latches the loop region a channel
+//     reloads on its NEXT block-wrap WITHOUT disturbing the live playhead,
+//     so a one-shot intro plays once and the body loops after (the amiga
+//     audxlc+audxlen-rewrite-while-playing trick)
+//   * volume 0..64 -> linear gain, with a ~2 ms anti-click glide so note-ons
+//     and envelope steps don't zipper
 //   * dmacon master bit (dmaen) + per-channel audxen bits
+//   * per-channel mute (for stems / soloing) -- the channel keeps running,
+//     only its mix contribution drops
 // left out on purpose: audio modulation (adkcon amod), blitter-fed samples,
 // the analog reconstruction filter -- hand bandwidth to your own resampler.
 //
-// upsampling is linear interpolation from paula's native rate to your output
-// rate. cheap and clean enough -- the source is 8-bit and already band-limited.
+// resampling from paula's native rate to your output rate is selectable:
+//   * nearest (default) -- zero-order hold. keeps (and aliases) the top
+//     octave = the bright, authentic amiga character.
+//   * linear -- one-tap interpolation. softer, less aliasing.
+// stereo is the hard amiga ch0+3/1+2 split by default, blendable toward
+// centre with setStereoSeparation() for a natural image on headphones.
 //
 // MIT. see LICENSE.
 
@@ -120,6 +131,40 @@ public:
     void setClockHz(double hz) noexcept { clockHz_ = hz; }
     double clockHz() const noexcept { return clockHz_; }
 
+    // latch the LOOP region a channel reloads on its NEXT block-wrap, WITHOUT
+    // touching the live playhead. mirrors the amiga two-stage program: write
+    // audxlc+audxlen once for the one-shot, then latch the loop's loc/len so
+    // the dma-finished reload picks them up. `loc` = absolute byte address in
+    // your chip ram, `lenWords` = loop length in 16-bit words (audxlen units;
+    // 0 = the full 64k words). a tracker that toggles dma per row doesn't need
+    // this; sustained/looped synth voices do.
+    void setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept;
+
+    // resampling mode (see the file header). nearest is the default for the
+    // authentic bright amiga sound; linear is softer with less aliasing.
+    enum class Interp { Nearest, Linear };
+    void setInterpolation(Interp mode) noexcept { interp_ = mode; }
+    Interp interpolation() const noexcept { return interp_; }
+
+    // stereo separation 0..1. 1.0 = the hard amiga ch0+3-left / ch1+2-right
+    // ping-pong; 0.0 = mono. anything between cross-blends the LRRL voices
+    // toward centre, turning the harsh hard-pan into a natural "cd" image on
+    // headphones. default 0.85.
+    void setStereoSeparation(float s) noexcept {
+        stereoSep_ = s < 0.0f ? 0.0f : (s > 1.0f ? 1.0f : s);
+    }
+    float stereoSeparation() const noexcept { return stereoSep_; }
+
+    // per-channel mute (stems / solo). default all-audible = a strict no-op.
+    // a muted channel keeps its full dma + gain state running; only its
+    // contribution to the mix is dropped, so unmuting is glitch-free.
+    void setChannelMuted(int ch, bool muted) noexcept {
+        if (ch >= 0 && ch < kPaulaChannels) channelMuted_[ch] = muted;
+    }
+    bool channelMuted(int ch) const noexcept {
+        return (ch >= 0 && ch < kPaulaChannels) && channelMuted_[ch];
+    }
+
     // peek at a channel -- handy for tests / vu meters.
     struct ChannelState {
         uint32_t locPtr;
@@ -148,6 +193,7 @@ private:
         bool     dmaWantsRestart = true;
         int8_t   curOut   = 0;
         int8_t   nextOut  = 0;
+        float    gainSmoothed = 0.0f; // anti-click: ~2 ms glide toward target gain
     };
 
     void serviceChannel_(Channel& c, int chIdx,
@@ -156,9 +202,13 @@ private:
     void advanceOneSourceSample_(Channel& c, int chIdx) noexcept;
 
     double      clockHz_;
+    Interp      interp_ = Interp::Nearest;  // bright amiga sound by default
+    float       stereoSep_ = 0.85f;         // see setStereoSeparation()
+    float       gainSmoothCoeff_ = 0.02f;   // anti-click 1-pole, set per render()
     ReadByteFn  read_;
     InterruptFn onInterrupt_;
     std::array<Channel, kPaulaChannels> channels_;
+    std::array<bool, kPaulaChannels> channelMuted_{};  // default all-audible
     uint16_t    dmaCon_  = 0;
     uint16_t    intReq_  = 0;
     uint16_t    intEna_  = 0;

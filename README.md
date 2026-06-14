@@ -48,7 +48,10 @@ done properly, and out of your way.
 it's deliberately *not* a cycle-accurate silicon model. it nails the behaviour
 that actually matters for music: 8-bit sample dma, period→pitch, the audxlen
 loop reload, the dmacon master + per-channel enables, and the ch0+3/1+2 stereo
-split. linear-interpolated up to whatever output rate you ask for.
+split. it resamples up to whatever output rate you ask for — nearest-neighbour
+by default for the bright, authentic amiga character, or switch to linear for a
+softer image. note-ons get a ~2 ms anti-click gain glide so volume changes
+don't zipper.
 
 ## proven, not a toy
 
@@ -89,6 +92,29 @@ is: a read callback, a few register writes, `render()`.
 
 period→hz uses the colour clock: pal `3.546895 MHz`, ntsc `3.579545 MHz`
 (`paula.setClockHz()` to switch).
+
+## a few extras
+
+beyond poking raw registers, a handful of calls cover the things real music
+needs that aren't a single register write:
+
+```cpp
+// two-stage loop: play a one-shot intro once, then loop a body region forever.
+// latches the loop region the channel reloads on its NEXT block-wrap, without
+// touching the live playhead — the amiga audxlc+audxlen-while-playing trick.
+paula.setLoop(ch, loopByteAddr, loopLenWords);
+
+// resampling: nearest (default, bright/authentic) or linear (softer).
+paula.setInterpolation(amiga::Paula::Interp::Linear);
+
+// stereo separation 0..1: 1.0 = the hard amiga ch0+3/1+2 ping-pong,
+// lower blends toward centre for a natural image on headphones (default 0.85).
+paula.setStereoSeparation(0.7f);
+
+// mute a channel for stems / soloing — it keeps running, only the mix drops,
+// so unmuting is glitch-free.
+paula.setChannelMuted(2, true);
+```
 
 ## what it doesn't do
 
