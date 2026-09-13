@@ -17,7 +17,8 @@
 //     (pal 3.546895 mhz, ntsc 3.579545 mhz)
 //   * instant period writes (audxper)
 //   * audxlen reload at end-of-sample -> loop, the way trackers that don't
-//     toggle dma per row expect
+//     toggle dma per row expect. a length of 0 plays 65536 words, as on the
+//     chip.
 //   * a two-stage loop program: setLoop() latches the loop region a channel
 //     reloads on its NEXT block-wrap WITHOUT disturbing the live playhead,
 //     so a one-shot intro plays once and the body loops after (the amiga
@@ -136,8 +137,8 @@ public:
     // audxlc+audxlen once for the one-shot, then latch the loop's loc/len so
     // the dma-finished reload picks them up. `loc` = absolute byte address in
     // your chip ram, `lenWords` = loop length in 16-bit words (audxlen units;
-    // 0 = the full 64k words). a tracker that toggles dma per row doesn't need
-    // this; sustained/looped synth voices do.
+    // 0 = 65536 words, 131072 bytes, as on the chip). a tracker that toggles
+    // dma per row doesn't need this; sustained/looped synth voices do.
     void setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept;
 
     // resampling mode (see the file header). nearest is the default for the
@@ -168,7 +169,7 @@ public:
     // peek at a channel -- handy for tests / vu meters.
     struct ChannelState {
         uint32_t locPtr;
-        uint16_t lenWords;
+        uint16_t lenWords;     // audxlen as written (0 plays 65536 words)
         uint16_t periodTicks;
         uint16_t volume;
         bool     dmaEnabled;
@@ -185,7 +186,7 @@ private:
         uint16_t period   = 1;        // never zero
         uint16_t volume   = 0;
         uint32_t curPtr   = 0;        // live byte ptr into the sample
-        uint16_t curWordsLeft = 0;    // words left until reload
+        uint32_t curWordsLeft = 0;    // words left until reload: up to 65536 (audxlen 0)
         uint8_t  curSampleL = 0;      // 2 bytes per word
         uint8_t  curSampleH = 0;
         bool     onLowByte = true;

@@ -23,6 +23,14 @@ inline float sampleToFloat(int8_t s) noexcept {
     return float(s) / 128.0f;
 }
 
+// the words a channel plays for an audxlen value. the register holds 16 bits,
+// and the chip reads a 0 as the longest length there is: 65536 words, 131072
+// bytes of chip ram before the reload. a 16-bit counter loaded with the 0
+// would reload after a single word and play a one-word loop instead.
+inline uint32_t wordsForLength(uint16_t audLen) noexcept {
+    return audLen == 0 ? 65536u : uint32_t(audLen);
+}
+
 // stereo routing: ch0+3 -> left, ch1+2 -> right. -1 = left, +1 = right.
 inline int channelStereoSide(int ch) noexcept {
     switch (ch) {
@@ -70,7 +78,7 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
                 } else {
                     auto& c = channels_[ch];
                     c.curPtr = c.locPtrLatched;
-                    c.curWordsLeft = c.lenWordsLatched;
+                    c.curWordsLeft = wordsForLength(c.lenWordsLatched);
                     c.onLowByte = true;
                     c.curSampleL = c.curSampleH = 0;
                     c.curOut = c.nextOut = 0;
@@ -120,7 +128,8 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
             return;
         }
         if (reg == kReg_AUDxLEN(ch)) {
-            // real paula reads len=0 as 65536 words. mirror that.
+            // latched as written. a 0 plays as 65536 words: the dmacon start
+            // and the reload both load the counter through wordsForLength().
             channels_[ch].lenWordsLatched = value;
             return;
         }
@@ -146,8 +155,9 @@ void Paula::setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept {
     // overwrite ONLY the latched (reload-at-block-end) pair. the live playhead
     // (curPtr / curWordsLeft) is left alone, so the one-shot just programmed
     // finishes and the channel then loops this region -- the amiga audxlc+audxlen
-    // reload mechanism (advanceOneSourceSample_'s curWordsLeft==0 branch copies
-    // locPtrLatched/lenWordsLatched into the live registers).
+    // reload mechanism (advanceOneSourceSample_'s curWordsLeft==0 branch loads
+    // locPtrLatched/lenWordsLatched into the live pointer and counter; a length
+    // of 0 loads 65536 words there).
     channels_[ch].locPtrLatched   = loc;
     channels_[ch].lenWordsLatched = lenWords;
 }
@@ -197,7 +207,7 @@ void Paula::advanceOneSourceSample_(Channel& c, int chIdx) noexcept {
         if (c.curWordsLeft == 0) {
             // reload from latched values = the loop point.
             c.curPtr = c.locPtrLatched;
-            c.curWordsLeft = c.lenWordsLatched;
+            c.curWordsLeft = wordsForLength(c.lenWordsLatched);
             // set the intreq bit regardless of intena (the request flag is
             // independent of enable). the host's callback decides what to do
             // with it.

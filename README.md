@@ -78,12 +78,22 @@ g++ -std=c++17 -O2 -I. example/example.cpp paula.cpp -o paulatest && ./paulatest
 writes `paula.wav` — a little 4-voice chord. that's all the integration there
 is: a read callback, a few register writes, `render()`.
 
+## run the tests
+
+```sh
+g++ -std=c++17 -O2 -I. tests/test_audxlen_zero.cpp paula.cpp -o test_audxlen_zero && ./test_audxlen_zero
+```
+
+or with cmake: `cmake -B build && cmake --build build && ctest --test-dir build`.
+the test watches every chip address paula reads while an `audxlen` of 0 plays
+its full 65536 words.
+
 ## the registers it understands
 
 | reg            | offset    | what |
 |----------------|-----------|------|
 | `audxlch/lcl`  | `$a0/$a2` | sample start pointer (per channel, +$10 each) |
-| `audxlen`      | `$a4`     | length in words (loop length) |
+| `audxlen`      | `$a4`     | length in words (loop length; 0 = 65536 words) |
 | `audxper`      | `$a6`     | period — pitch = colourclock / period |
 | `audxvol`      | `$a8`     | volume 0..64 |
 | `dmacon`       | `$96`     | bit 9 master, bits 0..3 per-channel enable |

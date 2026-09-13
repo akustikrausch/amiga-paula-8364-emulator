@@ -2,6 +2,28 @@
 
 all notable changes to the paula 8364 emulator. dates are `yyyy-mm-dd`.
 
+## 2026-09-13: audxlen 0 plays 65536 words
+
+a fix, no api change.
+
+- **a length of 0 is the longest length, not the shortest.** the chip reads an
+  `audxlen` of 0 as 65536 words (131072 bytes of chip ram) before it reloads
+  pointer and length. the emulator loaded that 0 straight into a 16-bit word
+  counter, so the channel reloaded after a single word, sat on a one-word loop
+  (a dc level) and raised its audio interrupt on every word. both places that
+  load the counter (the dmacon start and the loop reload) now turn a 0 into
+  65536, and the counter is wide enough to hold it. `setLoop(ch, loc, 0)` gets
+  the full length its comment always promised.
+- replayers that write a loop length of 0 now read on through the sample memory
+  behind it, the way they do on an amiga. brian postma's soundmon is one of them.
+- `channelState(ch).lenWords` still reports `audxlen` as written, so a 0 stays 0.
+- new: `tests/test_audxlen_zero.cpp` records every chip address paula reads. a
+  0 reads on, wraps after 65536 words (not 65535), reloads 65536 again and
+  starts like any other length; a 1 still loops its single word. `ctest` runs
+  it when this is the top-level project.
+
+found in FXChainPlayer, where the same chip plays soundmon modules.
+
 ## 2026-06-14 — playback fidelity
 
 new behaviour, all additive — existing callers keep working unchanged (the new
