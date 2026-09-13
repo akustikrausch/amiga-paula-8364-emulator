@@ -56,6 +56,8 @@ struct Rig {
     std::vector<int8_t>   chip;
     std::vector<uint32_t> reads;       // every chip address paula read, in order
     std::vector<size_t>   irqAtRead;   // reads.size() at each channel-0 audio interrupt
+    size_t                startIrqs = 0;   // those requested by a register write
+    bool                  rendering = false;
 
     explicit Rig(size_t bytes) : chip(bytes, 0) {
         paula.setStereoSeparation(1.0f);   // channel 0 alone on the left output
@@ -64,7 +66,9 @@ struct Rig {
             return a < chip.size() ? uint8_t(chip[a]) : uint8_t(0);
         });
         paula.setInterruptCallback([this](uint16_t bits) {
-            if (bits & kIntAud0) irqAtRead.push_back(reads.size());
+            if (!(bits & kIntAud0)) return;
+            irqAtRead.push_back(reads.size());
+            if (!rendering) ++startIrqs;
         });
     }
     Rig(const Rig&) = delete;
@@ -87,7 +91,9 @@ struct Rig {
     // frame f of the left output carries the byte paula fetched at frame f - 1.
     std::vector<float> render(size_t frames) {
         std::vector<float> l(frames), r(frames);
+        rendering = true;
         paula.render(l.data(), r.data(), int(frames), kRate);
+        rendering = false;
         return l;
     }
 };
@@ -115,21 +121,18 @@ bool interruptAt(const std::vector<size_t>& irqs, size_t reads) {
     return false;
 }
 
-// audio interrupts at the two moments a channel starts: turned on, and turned
-// off and on again after 32 words. whatever the model raises there, a length
-// of 0 has to raise the same as any other length; a counter started at 0
-// reloads before its first word and raises one more each time.
+// audio interrupts requested by the two starts of a channel: turned on, and
+// turned off and on again after 32 words. each start requests exactly one,
+// for a length of 0 as for any other; a counter started at 0 would reload
+// before its first word and request one more.
 size_t startInterrupts(uint16_t len) {
     Rig rig(256);
     rig.start(0, len);
     rig.render(64);
     rig.off();
     rig.on();
-    const size_t restart = rig.reads.size();
     rig.render(64);
-    size_t n = 0;
-    for (size_t at : rig.irqAtRead) n += at == 0 || at == restart;
-    return n;
+    return rig.startIrqs;
 }
 
 } // namespace
@@ -162,8 +165,8 @@ int main() {
         EXPECT(readsRun(rig.reads, before, 0, 64),
                "turned off and on again, a length of 0 starts over and reads on past the first word");
     }
-    EXPECT(startInterrupts(0) == startInterrupts(1),
-           "a length of 0 starts like any other length: no extra interrupt when the channel is turned on");
+    EXPECT(startInterrupts(0) == 2 && startInterrupts(1) == 2,
+           "a length of 0 starts like any other length: one audio interrupt at each start, none extra");
 
     // --- len1: the control -------------------------------------------------------
     {
@@ -209,7 +212,7 @@ int main() {
                    && out[kFullBytes + 3] < 0.0f,
                "then the first word again, never the word behind the loop");
         EXPECT(interruptsBefore(rig.irqAtRead, kFullBytes) == 0 && interruptAt(rig.irqAtRead, kFullBytes),
-               "the reload interrupt comes after 65536 words, not before");
+               "the restart interrupt comes with the 65536th word, not before");
     }
 
     // --- 65535: the longest non-zero length -------------------------------------------

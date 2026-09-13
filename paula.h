@@ -98,9 +98,11 @@ inline constexpr uint16_t kIntAud3 = 0x0400u;
 // it never needs to know how your memory is laid out.
 using ReadByteFn = std::function<uint8_t(uint32_t address)>;
 
-// paula raises intreq bits when a channel finishes its audxlen words (loop
-// point). wiring it to a cia timer or into your cpu's irq mask is your
-// call.
+// paula raises a channel's intreq bit when the channel has just read audxlc
+// and audxlen: once when dma turns the channel on, and again each time the
+// last word of its block begins (the pointer restart). software joins tones
+// by writing the next segment in that interrupt. wiring it to a cia timer or
+// into your cpu's irq mask is your call.
 using InterruptFn = std::function<void(uint16_t intBitMask)>;
 
 class Paula {
@@ -187,6 +189,8 @@ private:
         uint16_t volume   = 0;
         uint32_t curPtr   = 0;        // live byte ptr into the sample
         uint32_t curWordsLeft = 0;    // words left until reload: up to 65536 (audxlen 0)
+        uint32_t restartPtr = 0;      // audxlc and audxlen as read when the last
+        uint32_t restartWordsLeft = 0;//   word of the block began
         uint8_t  curSampleL = 0;      // 2 bytes per word
         uint8_t  curSampleH = 0;
         bool     onLowByte = true;
@@ -201,6 +205,7 @@ private:
                          double samplesPerOutFrame,
                          float& mixOut) noexcept;
     void advanceOneSourceSample_(Channel& c, int chIdx) noexcept;
+    void raiseAudioInterrupt_(uint16_t bits) noexcept;
 
     double      clockHz_;
     Interp      interp_ = Interp::Nearest;  // bright amiga sound by default

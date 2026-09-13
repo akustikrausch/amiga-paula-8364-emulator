@@ -2,6 +2,31 @@
 
 all notable changes to the paula 8364 emulator. dates are `yyyy-mm-dd`.
 
+## 2026-09-13: the audio interrupt at the start and with the last word
+
+a fix, no api change.
+
+- **turning a channel on now requests its audio interrupt.** the chip requests
+  it as soon as a channel has read `audxlc` and `audxlen` into its back-up
+  registers (hardware reference manual, "joining tones"), and that happens
+  when dma starts the channel, not only at the restart. software that joins
+  tones by writing the next segment in the interrupt used to get its first
+  interrupt at the end of the first segment, after that segment had been read
+  again, so the first segment played twice. now a, b, c play once each.
+- **the restart happens as the last word of a block begins.** the length
+  counter finishes at one, and the pointer and length for the restart are read
+  right then, together with the interrupt. before, both came one word later,
+  after the last word had played. a location written while the last word
+  already plays now waits for the following restart, as on the chip.
+- the interrupt goes out after the fetch has completed its sample state, so a
+  handler may write the next segment or restart the channel safely.
+- new: `tests/test_audio_interrupt.cpp` checks the start interrupt, its timing,
+  tones joined by register writes and by `setLoop()`, and the late latch.
+  `tests/test_audxlen_zero.cpp` now expects one interrupt per channel start.
+
+found in FXChainPlayer, where the same chip runs 68k music that joins tones by
+interrupt.
+
 ## 2026-09-13: audxlen 0 plays 65536 words
 
 a fix, no api change.

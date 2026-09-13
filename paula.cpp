@@ -70,6 +70,7 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
         // a channel that just came on re-primes: it reloads from
         // audxlch/audxlen on the next fetch. a channel already running is
         // left alone.
+        uint16_t started = 0;
         for (int ch = 0; ch < kPaulaChannels; ++ch) {
             const uint16_t mask = uint16_t(1u << ch);
             if ((dmaCon_ & mask) && (dmaCon_ & kDmaConMaster)) {
@@ -84,11 +85,18 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
                     c.curOut = c.nextOut = 0;
                     c.phase = 0.0;
                     c.dmaWantsRestart = false;
+                    started |= uint16_t(kIntAud0 << ch);
                 }
             } else {
                 channels_[ch].dmaWantsRestart = true;
             }
         }
+        // a channel that has just read audxlc and audxlen requests its audio
+        // interrupt at once (hardware reference manual, "joining tones"): the
+        // software writes the next segment there, before the first restart.
+        // raised after the loop, so a handler that writes paula registers
+        // never runs inside it.
+        if (started) raiseAudioInterrupt_(started);
         return;
     }
     if (reg == kReg_INTREQ) {
@@ -152,14 +160,24 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
 
 void Paula::setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept {
     if (ch < 0 || ch >= kPaulaChannels) return;
-    // overwrite ONLY the latched (reload-at-block-end) pair. the live playhead
-    // (curPtr / curWordsLeft) is left alone, so the one-shot just programmed
-    // finishes and the channel then loops this region: the amiga audxlc+audxlen
-    // reload mechanism (advanceOneSourceSample_'s curWordsLeft==0 branch loads
-    // locPtrLatched/lenWordsLatched into the live pointer and counter; a length
-    // of 0 loads 65536 words there).
+    // overwrite ONLY the latched pair. the live playhead (curPtr /
+    // curWordsLeft) is left alone, so the one-shot just programmed finishes
+    // and the channel then loops this region: the amiga audxlc+audxlen restart
+    // mechanism. advanceOneSourceSample_ reads locPtrLatched/lenWordsLatched
+    // when the last word of the running block begins (a length of 0 reads
+    // 65536 words), so a loop latched while that last word already plays
+    // waits for the following restart.
     channels_[ch].locPtrLatched   = loc;
     channels_[ch].lenWordsLatched = lenWords;
+}
+
+void Paula::raiseAudioInterrupt_(uint16_t bits) noexcept {
+    // the request flag is set regardless of intena; the host's callback
+    // decides what to do with it.
+    intReq_ |= bits;
+    if (onInterrupt_) {
+        onInterrupt_(bits);
+    }
 }
 
 uint16_t Paula::readRegister16(uint32_t addr) const noexcept {
@@ -201,28 +219,27 @@ void Paula::advanceOneSourceSample_(Channel& c, int chIdx) noexcept {
         return;
     }
 
+    bool lastWordBegins = false;
     if (c.onLowByte) {
-        // at a word boundary: check exhaustion first, because paula raises the
-        // irq on the start-of-word that would have been the new pointer load.
+        // at a word boundary. the restart: pointer and length were read from
+        // audxlc and audxlen when the last word of the block began (below).
         if (c.curWordsLeft == 0) {
-            // reload from latched values = the loop point.
-            c.curPtr = c.locPtrLatched;
-            c.curWordsLeft = wordsForLength(c.lenWordsLatched);
-            // set the intreq bit regardless of intena (the request flag is
-            // independent of enable). the host's callback decides what to do
-            // with it.
-            const uint16_t intBit = uint16_t(uint16_t(0x80u) << chIdx);
-            intReq_ |= intBit;
-            if (onInterrupt_) {
-                onInterrupt_(intBit);
-            }
+            c.curPtr = c.restartPtr;
+            c.curWordsLeft = c.restartWordsLeft;
         }
         // fetch the next word: 2 bytes from chip ram.
         c.curSampleL = read_(c.curPtr);
         c.curSampleH = read_(c.curPtr + 1);
         c.curPtr += 2;
-        if (c.curWordsLeft > 0) {
-            --c.curWordsLeft;
+        if (c.curWordsLeft > 0 && --c.curWordsLeft == 0) {
+            // the length counter finishes (counts to one) as the last word of
+            // the block starts its output. the chip restarts the pointer and
+            // reloads the length right here (hardware reference manual, "the
+            // audio state machine"): values written from now on wait for the
+            // restart after this one.
+            c.restartPtr = c.locPtrLatched;
+            c.restartWordsLeft = wordsForLength(c.lenWordsLatched);
+            lastWordBegins = true;
         }
         c.curOut = c.nextOut;
         c.nextOut = int8_t(c.curSampleL);
@@ -231,6 +248,12 @@ void Paula::advanceOneSourceSample_(Channel& c, int chIdx) noexcept {
         c.curOut = c.nextOut;
         c.nextOut = int8_t(c.curSampleH);
         c.onLowByte = true;
+    }
+    // the interrupt goes out with the last word, after this sample's state is
+    // complete: a handler may write the next segment, or even restart the
+    // channel, without this fetch overwriting what it did.
+    if (lastWordBegins) {
+        raiseAudioInterrupt_(uint16_t(kIntAud0 << chIdx));
     }
 }
 

@@ -82,11 +82,14 @@ is: a read callback, a few register writes, `render()`.
 
 ```sh
 g++ -std=c++17 -O2 -I. tests/test_audxlen_zero.cpp paula.cpp -o test_audxlen_zero && ./test_audxlen_zero
+g++ -std=c++17 -O2 -I. tests/test_audio_interrupt.cpp paula.cpp -o test_audio_interrupt && ./test_audio_interrupt
 ```
 
 or with cmake: `cmake -B build && cmake --build build && ctest --test-dir build`.
-the test watches every chip address paula reads while an `audxlen` of 0 plays
-its full 65536 words.
+the tests watch every chip address paula reads: an `audxlen` of 0 plays its
+full 65536 words, and the audio interrupt comes when a channel starts and when
+the last word of its block begins, so tones joined in the interrupt play once
+each.
 
 ## the registers it understands
 
@@ -97,7 +100,7 @@ its full 65536 words.
 | `audxper`      | `$a6`     | period: pitch = colourclock / period |
 | `audxvol`      | `$a8`     | volume 0..64 |
 | `dmacon`       | `$96`     | bit 9 master, bits 0..3 per-channel enable |
-| `intreq/ena`   | `$9c/$9a` | audio-finished irq bits (loop point) |
+| `intreq/ena`   | `$9c/$9a` | audio irq bits: set when a channel starts and when the last word of its block begins |
 | `vhposr/vpos`  | `$06/$04` | synthetic beam counter for replayers that poll it |
 
 the period to hz conversion uses the colour clock: pal `3.546895 MHz`,
