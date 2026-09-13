@@ -1,4 +1,4 @@
-// example.cpp -- drive paula by hand and dump a wav.
+// example.cpp: drive paula by hand and dump a wav.
 //
 // build (any c++17 compiler), from the repo root:
 //   g++  -std=c++17 -O2 -I. example/example.cpp paula.cpp -o paulatest
@@ -53,11 +53,11 @@ int main() {
     };
 
     // a little minor chord across the four voices. volumes kept modest so the
-    // two-voices-per-side sum stays under unity -- no clip.
-    playChannel(0, saw,  254, 30);   // ~a-3 -- left
-    playChannel(1, sine, 320, 32);   //        right
-    playChannel(2, sqr,  428, 30);   //        right
-    playChannel(3, sine, 214, 28);   //        left
+    // two-voices-per-side sum stays under unity, so nothing clips.
+    playChannel(0, saw,  254, 30);   // ~a-3, left
+    playChannel(1, sine, 320, 32);   //       right
+    playChannel(2, sqr,  428, 30);   //       right
+    playChannel(3, sine, 214, 28);   //       left
 
     // master dma on + all four channels.
     paula.writeRegister16(amiga::kCustomBase + amiga::kReg_DMACON,
@@ -85,6 +85,6 @@ int main() {
 
     float peak = 0.0f;
     for (int i = 0; i < frames; ++i) { peak = std::fmax(peak, std::fabs(L[i])); peak = std::fmax(peak, std::fabs(R[i])); }
-    std::printf("wrote paula.wav -- %d frames, peak %.3f. give it a listen.\n", frames, peak);
+    std::printf("wrote paula.wav: %d frames, peak %.3f. give it a listen.\n", frames, peak);
     return 0;
 }

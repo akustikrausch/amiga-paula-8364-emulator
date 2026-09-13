@@ -1,4 +1,4 @@
-// paula.cpp -- amiga paula 8364 audio chip emulator. clean-room, MIT.
+// paula.cpp: amiga paula 8364 audio chip emulator. clean-room, MIT.
 // see paula.h for the design notes.
 
 #include "paula.h"
@@ -74,7 +74,7 @@ void Paula::writeRegister16(uint32_t addr, uint16_t value) noexcept {
             const uint16_t mask = uint16_t(1u << ch);
             if ((dmaCon_ & mask) && (dmaCon_ & kDmaConMaster)) {
                 if (!channels_[ch].dmaWantsRestart) {
-                    // running -- don't disturb.
+                    // running: don't disturb.
                 } else {
                     auto& c = channels_[ch];
                     c.curPtr = c.locPtrLatched;
@@ -154,7 +154,7 @@ void Paula::setLoop(int ch, uint32_t loc, uint16_t lenWords) noexcept {
     if (ch < 0 || ch >= kPaulaChannels) return;
     // overwrite ONLY the latched (reload-at-block-end) pair. the live playhead
     // (curPtr / curWordsLeft) is left alone, so the one-shot just programmed
-    // finishes and the channel then loops this region -- the amiga audxlc+audxlen
+    // finishes and the channel then loops this region: the amiga audxlc+audxlen
     // reload mechanism (advanceOneSourceSample_'s curWordsLeft==0 branch loads
     // locPtrLatched/lenWordsLatched into the live pointer and counter; a length
     // of 0 loads 65536 words there).
@@ -171,13 +171,13 @@ uint16_t Paula::readRegister16(uint32_t addr) const noexcept {
     // vhposr ($dff006) + vpos ($dff004). some replayers busy-wait on the beam
     // position to sync to the raster (move.w vhposr,d5; add #4<<8,d5; .wait:
     // cmp.w vhposr,d5; bgt.s .wait). there's no real raster here, so we just
-    // advance the counter on every read -- +0x100 = +1 raster line -- and the
+    // advance the counter on every read (+0x100 = +1 raster line), and the
     // loop terminates after a handful of polls whatever the target was.
     if (reg == 0x006u) { // vhposr
         vhposrCounter_ = uint16_t((vhposrCounter_ + 0x0100u) & 0xFFFFu);
         return vhposrCounter_;
     }
-    if (reg == 0x004u) { // vpos -- high byte (vertical position)
+    if (reg == 0x004u) { // vpos: high byte (vertical position)
         vhposrCounter_ = uint16_t((vhposrCounter_ + 0x0100u) & 0xFFFFu);
         return uint16_t((vhposrCounter_ >> 8) & 0x00FFu);
     }
@@ -202,8 +202,8 @@ void Paula::advanceOneSourceSample_(Channel& c, int chIdx) noexcept {
     }
 
     if (c.onLowByte) {
-        // at a word boundary: check exhaustion first -- paula raises the irq
-        // on the start-of-word that would have been the new pointer load.
+        // at a word boundary: check exhaustion first, because paula raises the
+        // irq on the start-of-word that would have been the new pointer load.
         if (c.curWordsLeft == 0) {
             // reload from latched values = the loop point.
             c.curPtr = c.locPtrLatched;

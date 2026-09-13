@@ -1,8 +1,8 @@
-// test_audxlen_zero.cpp -- an audxlen of 0 plays 65536 words, like the chip.
+// test_audxlen_zero.cpp: an audxlen of 0 plays 65536 words, like the chip.
 // ----------------------------------------------------------------------------
 // audxlen counts 16-bit words, and paula reads a 0 as the longest length there
 // is: the channel plays 65536 words (131072 bytes of chip ram) before it
-// reloads its pointer and length. real replayers lean on it -- brian postma's
+// reloads its pointer and length. real replayers lean on it: brian postma's
 // soundmon writes a loop length of 0 and reads on through the samples stored
 // behind it. a 16-bit counter loaded straight with the 0 reloads after a single
 // word instead: the channel sits on a one-word loop (a dc level) and raises its
@@ -135,7 +135,7 @@ size_t startInterrupts(uint16_t len) {
 } // namespace
 
 int main() {
-    std::printf("test_audxlen_zero -- audxlen 0 plays 65536 words\n");
+    std::printf("test_audxlen_zero: audxlen 0 plays 65536 words\n");
 
     // --- len0: reads on past the first word ------------------------------------
     // word 0 is +100, everything behind it -100.

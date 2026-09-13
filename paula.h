@@ -1,4 +1,4 @@
-// paula.h -- amiga paula 8364 audio chip emulator
+// paula.h: amiga paula 8364 audio chip emulator
 // ----------------------------------------------------------------------------
 // clean-room. built from the public hardware docs only:
 //   - amiga hardware reference manual, 3rd ed. (addison-wesley)
@@ -9,7 +9,7 @@
 // paula is the 4-channel sample-dma sound chip in every amiga (ocs/ecs/aga).
 // each channel carries its own pointer, length, period (= colour-clock / rate)
 // and volume. 8-bit signed samples, hardware loop through the audxlen reload.
-// channels 0+3 go to the left output, 1+2 to the right -- the amiga way.
+// channels 0+3 go to the left output, 1+2 to the right, the amiga way.
 //
 // scope is precision-of-behaviour: enough to drive real amiga music replayers
 // at a modern output rate. not cycle-accurate silicon. modelled:
@@ -26,15 +26,15 @@
 //   * volume 0..64 -> linear gain, with a ~2 ms anti-click glide so note-ons
 //     and envelope steps don't zipper
 //   * dmacon master bit (dmaen) + per-channel audxen bits
-//   * per-channel mute (for stems / soloing) -- the channel keeps running,
+//   * per-channel mute (for stems / soloing): the channel keeps running,
 //     only its mix contribution drops
 // left out on purpose: audio modulation (adkcon amod), blitter-fed samples,
-// the analog reconstruction filter -- hand bandwidth to your own resampler.
+// the analog reconstruction filter. hand bandwidth to your own resampler.
 //
 // resampling from paula's native rate to your output rate is selectable:
-//   * nearest (default) -- zero-order hold. keeps (and aliases) the top
+//   * nearest (default): zero-order hold. keeps (and aliases) the top
 //     octave = the bright, authentic amiga character.
-//   * linear -- one-tap interpolation. softer, less aliasing.
+//   * linear: one-tap interpolation. softer, less aliasing.
 // stereo is the hard amiga ch0+3/1+2 split by default, blendable toward
 // centre with setStereoSeparation() for a natural image on headphones.
 //
@@ -99,7 +99,7 @@ inline constexpr uint16_t kIntAud3 = 0x0400u;
 using ReadByteFn = std::function<uint8_t(uint32_t address)>;
 
 // paula raises intreq bits when a channel finishes its audxlen words (loop
-// point). wire it to a cia timer or post it into your cpu's irq mask -- your
+// point). wiring it to a cia timer or into your cpu's irq mask is your
 // call.
 using InterruptFn = std::function<void(uint16_t intBitMask)>;
 
@@ -116,7 +116,7 @@ public:
     void reset() noexcept;
 
     // a 16-bit register write from your cpu. addr is the full 24-bit address
-    // (e.g. $dff096); we mask the high bits and dispatch. word writes only --
+    // (e.g. $dff096); we mask the high bits and dispatch. word writes only:
     // the real chip ignores byte writes to these registers anyway.
     void writeRegister16(uint32_t addr, uint16_t value) noexcept;
 
@@ -125,7 +125,7 @@ public:
 
     // render `frames` stereo frames at `outSr` hz into two mono float buffers.
     // ch0+3 sum into outL, ch1+2 into outR. range is roughly [-1, +1] for
-    // typical 8-bit samples at full volume -- no clip/limit, your mix bus owns
+    // typical 8-bit samples at full volume. no clip/limit, your mix bus owns
     // that.
     void render(float* outL, float* outR, int frames, double outSr) noexcept;
 
@@ -166,7 +166,7 @@ public:
         return (ch >= 0 && ch < kPaulaChannels) && channelMuted_[ch];
     }
 
-    // peek at a channel -- handy for tests / vu meters.
+    // peek at a channel, handy for tests / vu meters.
     struct ChannelState {
         uint32_t locPtr;
         uint16_t lenWords;     // audxlen as written (0 plays 65536 words)
@@ -214,7 +214,7 @@ private:
     uint16_t    intReq_  = 0;
     uint16_t    intEna_  = 0;
     uint16_t    adkCon_  = 0;
-    // synthetic vhposr/vpos counter -- see readRegister16 in the .cpp.
+    // synthetic vhposr/vpos counter (see readRegister16 in the .cpp).
     mutable uint16_t vhposrCounter_ = 0;
 };
 
